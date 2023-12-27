@@ -1,69 +1,78 @@
-// Import dependencies
+// App.js
 import React, { useRef, useState, useEffect } from "react";
 import * as tf from "@tensorflow/tfjs";
-// 1. TODO - Import required model here
-// e.g. import * as tfmodel from "@tensorflow-models/tfmodel";
 import * as cocossd from "@tensorflow-models/coco-ssd";
 import Webcam from "react-webcam";
 import "./App.css";
-// 2. TODO - Import drawing utility here
 import { drawRect } from "./utilities";
 
 function App() {
   const webcamRef = useRef(null);
   const canvasRef = useRef(null);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [detections, setDetections] = useState([]);
+  const [detectionFrequency, setDetectionFrequency] = useState(66);
 
-  // Main function
   const runCoco = async () => {
-    // 3. TODO - Load network 
-    const net = await cocossd.load();
-    
-    //  Loop and detect hands
-    setInterval(() => {
-      detect(net);
-    }, 10);
+    try {
+      const net = await cocossd.load();
+      setLoading(false);
+      setInterval(() => {
+        detect(net);
+      }, detectionFrequency);
+    } catch (error) {
+      console.error("Failed to load the COCO-SSD model", error);
+      setError("Failed to load the COCO-SSD model");
+      setLoading(false);
+    }
   };
 
   const detect = async (net) => {
-    // Check data is available
     if (
-      typeof webcamRef.current !== "undefined" &&
-      webcamRef.current !== null &&
+      webcamRef.current &&
       webcamRef.current.video.readyState === 4
     ) {
-      // Get Video Properties
       const video = webcamRef.current.video;
       const videoWidth = webcamRef.current.video.videoWidth;
       const videoHeight = webcamRef.current.video.videoHeight;
 
-      // Set video width
       webcamRef.current.video.width = videoWidth;
       webcamRef.current.video.height = videoHeight;
 
-      // Set canvas height and width
       canvasRef.current.width = videoWidth;
       canvasRef.current.height = videoHeight;
 
-      // 4. TODO - Make Detections
-      const obj = await net.detect(video);
-      console.log(obj);
+      try {
+        const obj = await net.detect(video);
+        setDetections(obj);
 
-      // Draw mesh
-      const ctx = canvasRef.current.getContext("2d");
-
-      // 5. TODO - Update drawing utility
-      drawRect(obj, ctx)  
+        const ctx = canvasRef.current.getContext("2d");
+        drawRect(obj, ctx);
+      } catch (error) {
+        console.error("Failed to detect objects", error);
+      }
     }
   };
 
-  useEffect(()=>{runCoco()},[]);
+  useEffect(() => {
+    runCoco();
+  }, [detectionFrequency]);
+
+  if (loading) {
+    return <div className="App-loading">Loading model...</div>;
+  }
+
+  if (error) {
+    return <div className="App-error">Error: {error}</div>;
+  }
 
   return (
     <div className="App">
       <header className="App-header">
         <Webcam
           ref={webcamRef}
-          muted={true} 
+          muted={true}
           style={{
             position: "absolute",
             marginLeft: "auto",
@@ -75,6 +84,7 @@ function App() {
             width: 640,
             height: 480,
           }}
+          onError={(e) => setError(`Webcam error: ${e.message}`)}
         />
 
         <canvas
@@ -92,6 +102,24 @@ function App() {
           }}
         />
       </header>
+      <aside className="App-sidebar">
+        <h2>Detections</h2>
+        {detections.map((detection, index) => (
+          <div key={index}>
+            {detection.class} - {Math.round(detection.score * 100)}%
+          </div>
+        ))}
+      </aside>
+      <footer className="App-footer">
+        <label>
+          Detection Frequency (ms): 
+          <input 
+            type="number" 
+            value={detectionFrequency} 
+            onChange={(e) => setDetectionFrequency(Number(e.target.value))} 
+          />
+        </label>
+      </footer>
     </div>
   );
 }
